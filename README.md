@@ -91,6 +91,7 @@ numpy
 matplotlib
 seaborn
 scikit-learn
+gdown
 ```
 
 ## 🔗 Links
