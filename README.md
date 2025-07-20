@@ -109,22 +109,22 @@ MIT License
 ## 📈 Visualizations
 
 ### 🔹 Class Distribution
-![Class Distribution](charts/Class_Distribution.png)
+![Class Distribution](Class_Distribution.png)
 
 ### 🔹 Confusion Matrix
-![Confusion Matrix](charts/Confusion_Matrix.png)
+![Confusion Matrix](Confusion_Matrix.png)
 
 ### 🔹 Custom CNN Architecture
-![Custom CNN Architecture](charts/Custom_CNN.png)
+![Custom CNN Architecture](Custom_CNN.png)
 
 ### 🔹 MRI Image Dimension Distribution
-![Image Dimension Distribution](charts/Image_Dimension.png)
+![Image Dimension Distribution](Image_Dimension.png)
 
 ### 🔹 Prediction Confidence
-![Prediction Confidence Histogram](charts/Prediction_Confidence.png)
+![Prediction Confidence Histogram](Prediction_Confidence.png)
 
 ### 🔹 ResNet50 Architecture
-![ResNet50 Architecture](charts/ResNet50_Transfer.png)
+![ResNet50 Architecture](ResNet50_Transfer.png)
 
 ---
 
