@@ -95,6 +95,7 @@ scikit-learn
 
 ## 🔗 Links
 - [Gdrive link to dataset and models](https://drive.google.com/drive/u/0/folders/1pstzDB3J1z1pA6zTq4Rffc6buhC5LyAX)
+- [Streamlit app](https://mri-classifier-bjudahe6z9umzdieg26ckk.streamlit.app/)
 
 ---
 
