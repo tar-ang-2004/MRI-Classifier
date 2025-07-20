@@ -8,6 +8,7 @@ import tempfile
 import os
 import time
 import random
+import subprocess
 
 DEVICE = torch.device('cpu')
 class_names = ["glioma", "meningioma", "no tumor", "pituitary"]
@@ -34,30 +35,32 @@ def predict_image(image, temperature=0.5):
         image.rotate(15),
         image.rotate(-15),
     ]
+    
     outputs = []
     for img in tta_images:
         input_tensor = transform(img).unsqueeze(0)
         with torch.no_grad():
             output = model(input_tensor)
             outputs.append(output)
+
     avg_output = torch.mean(torch.stack(outputs), dim=0)
     scaled_output = avg_output / temperature
     probabilities = torch.nn.functional.softmax(scaled_output, dim=1)
+    
     conf, pred = torch.max(probabilities, 1)
     return class_names[pred], conf.item() * 100
 
-# ✅ Updated speak() function
 def speak(text):
     tts = gtts.gTTS(text, slow=False)
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as fp:
         temp_path = fp.name
         tts.save(temp_path)
-    with open(temp_path, "rb") as audio_file:
-        audio_bytes = audio_file.read()
-        st.audio(audio_bytes, format='audio/mp3')
+    # Use system player (ffplay is available on Streamlit Cloud)
+    subprocess.call(['ffplay', '-nodisp', '-autoexit', temp_path],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     os.remove(temp_path)
 
-# --- Session state defaults ---
+# --- Session State ---
 if 'upload_mode' not in st.session_state:
     st.session_state.upload_mode = 'Single'
 if 'speak_enabled' not in st.session_state:
@@ -126,7 +129,7 @@ st.markdown("""
 # --- Title ---
 st.markdown('<div class="title">🧠 Brain Tumor MRI Classifier</div>', unsafe_allow_html=True)
 
-# --- Control Buttons ---
+# --- Buttons ---
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     if st.button("📷 Single Image"):
@@ -145,14 +148,14 @@ with col4:
         st.session_state.uploader_key = str(random.randint(1000, 9999))
         st.rerun()
 
-# --- Fadeout animation ---
+# --- Fade Reset Animation ---
 if st.session_state.fade_reset:
     st.markdown('<div class="fadeout-box">🔄 Resetting... Please wait...</div>', unsafe_allow_html=True)
     time.sleep(1.2)
     st.session_state.fade_reset = False
     st.rerun()
 
-# --- Upload Mode Display ---
+# --- Upload Info ---
 st.markdown(f"**Upload Mode:** `{st.session_state.upload_mode}`")
 st.markdown(f"**Speak:** `{st.session_state.speak_enabled}`")
 
@@ -168,12 +171,14 @@ files = st.file_uploader(
 if files:
     if st.session_state.upload_mode == "Single":
         files = [files]
-    for idx, file in enumerate(files):
-        image = Image.open(file)
 
-        if image.mode != 'RGB':
+    for idx, file in enumerate(files):
+        try:
+            image = Image.open(file).convert("RGB")
+            r, g, b = image.split()
+        except Exception:
             st.markdown(
-                f'<div class="warning">⚠️ Image {idx+1}: Not RGB! Please upload a valid RGB image.</div>',
+                f'<div class="warning">⚠️ Image {idx+1}: Not a valid RGB image.</div>',
                 unsafe_allow_html=True
             )
             if st.session_state.speak_enabled:
