@@ -6,34 +6,21 @@ import torch.nn as nn
 import gtts
 import tempfile
 import os
-import pygame
 import time
 import random
-import gdown
 
 DEVICE = torch.device('cpu')
 class_names = ["glioma", "meningioma", "no tumor", "pituitary"]
 
-MODEL_PATH = 'models/transfer_model.pt'
-MODEL_URL = 'https://drive.google.com/uc?id=1kb6mE0dgcftsHxZjgQxhFZF3QjzvpJgs'
-
-# --- Auto download model from Google Drive ---
-def download_model():
-    if not os.path.exists(MODEL_PATH):
-        os.makedirs("models", exist_ok=True)
-        gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
-
 @st.cache_resource
 def load_model():
-    download_model()
     model = models.resnet50(weights=None)
     model.fc = nn.Linear(model.fc.in_features, len(class_names))
-    model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
+    model.load_state_dict(torch.load('models/transfer_model.pt', map_location=DEVICE))
     model.eval()
     return model
 
 model = load_model()
-
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -59,17 +46,15 @@ def predict_image(image, temperature=0.5):
     conf, pred = torch.max(probabilities, 1)
     return class_names[pred], conf.item() * 100
 
+# ✅ Updated speak() function
 def speak(text):
     tts = gtts.gTTS(text, slow=False)
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as fp:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
         temp_path = fp.name
         tts.save(temp_path)
-    pygame.mixer.init()
-    pygame.mixer.music.load(temp_path)
-    pygame.mixer.music.play()
-    while pygame.mixer.music.get_busy():
-        pygame.time.Clock().tick(10)
-    pygame.mixer.music.unload()
+    with open(temp_path, "rb") as audio_file:
+        audio_bytes = audio_file.read()
+        st.audio(audio_bytes, format='audio/mp3')
     os.remove(temp_path)
 
 # --- Session state defaults ---
@@ -82,7 +67,7 @@ if 'fade_reset' not in st.session_state:
 if 'uploader_key' not in st.session_state:
     st.session_state.uploader_key = str(random.randint(1000, 9999))
 
-# --- CSS Styling ---
+# --- Custom CSS ---
 st.markdown("""
     <style>
     .title {
