@@ -1,0 +1,11 @@
+pathlib
+numpy
+matplotlib
+seaborn
+scikit-learn
+streamlit
+torch
+torchvision
+Pillow
+gtts
+pygame
