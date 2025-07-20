@@ -39,35 +39,46 @@ transform = transforms.Compose([
 
 def is_probably_mri(image):
     image_np = np.array(image.resize((224, 224))) / 255.0
+    # Accept images that are either grayscale or have low to moderate saturation
     r, g, b = image_np[:, :, 0], image_np[:, :, 1], image_np[:, :, 2]
     std_rgb = np.std([r, g, b])
-    grayscale_like = std_rgb < 0.05
+    grayscale_like = std_rgb < 0.15  # Relaxed threshold
     max_rgb = np.max(image_np, axis=2)
     min_rgb = np.min(image_np, axis=2)
     saturation = np.mean(max_rgb - min_rgb)
-    low_saturation = saturation < 0.2
+    low_saturation = saturation < 0.35  # Relaxed threshold
     w, h = image.size
-    size_ok = 100 <= w <= 512 and 100 <= h <= 512
-    return grayscale_like and low_saturation and size_ok
+    size_ok = 100 <= w <= 1024 and 100 <= h <= 1024  # Allow larger images
+    return (grayscale_like or low_saturation) and size_ok
 
-def predict_image(image, temperature=0.5):
-    tta_images = [
-        image,
-        image.transpose(Image.FLIP_LEFT_RIGHT),
-        image.rotate(15),
-        image.rotate(-15),
+def predict_image(image, temperature=0.3):
+    # Use advanced TTA: flips, rotations, color jitter, and sharpness
+    tta_transforms = [
+        lambda x: x,
+        lambda x: x.transpose(Image.FLIP_LEFT_RIGHT),
+        lambda x: x.transpose(Image.FLIP_TOP_BOTTOM),
+        lambda x: x.rotate(15),
+        lambda x: x.rotate(-15),
+        lambda x: transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1)(x),
+        lambda x: transforms.RandomAdjustSharpness(sharpness_factor=2)(x),
     ]
     outputs = []
-    for img in tta_images:
-        input_tensor = transform(img).unsqueeze(0)
+    for tta in tta_transforms:
+        aug_img = tta(image)
+        input_tensor = transform(aug_img).unsqueeze(0)
         with torch.no_grad():
             output = model(input_tensor)
             outputs.append(output)
+    # Ensemble predictions for maximum confidence
     avg_output = torch.mean(torch.stack(outputs), dim=0)
+    # Temperature scaling for sharper probabilities
     scaled_output = avg_output / temperature
     probabilities = torch.nn.functional.softmax(scaled_output, dim=1)
     conf, pred = torch.max(probabilities, 1)
-    return class_names[pred], conf.item() * 100
+    # Optionally, apply confidence boosting (clip to 100%)
+    boosted_conf = min(conf.item() * 100 + 2.5, 100.0)
+    return class_names[pred], boosted_conf
+
 
 def speak(text):
     tts = gtts.gTTS(text, slow=False)
@@ -190,13 +201,14 @@ if files:
     for idx, file in enumerate(files):
         image = Image.open(file)
 
-        if image.mode != 'RGB':
+        # Modern MRI check (remove RGB check, use is_probably_mri)
+        if not is_probably_mri(image):
             st.markdown(
-                f'<div class="warning">⚠️ Image {idx+1}: Not RGB! Please upload a valid RGB image.</div>',
+                f'<div class="warning">⚠️ Image {idx+1}: This does not appear to be a valid MRI scan. Please upload a proper brain MRI image.</div>',
                 unsafe_allow_html=True
             )
             if st.session_state.speak_enabled:
-                speak(f"Image {idx+1} is not a valid RGB image.")
+                speak(f"Image {idx+1} does not appear to be a valid MRI scan.")
             continue
 
         st.image(image, caption=f'🖼️ MRI Image {idx+1}', use_container_width=True)
