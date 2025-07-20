@@ -130,7 +130,7 @@ This project is inspired by the need for efficient and accurate brain tumor clas
 ## ⚙️ Installation
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/tar-ang-2004/MRI-Classifier
 cd <repository-directory>
 pip install -r requirements.txt
 ```
