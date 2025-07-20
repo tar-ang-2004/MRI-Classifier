@@ -1,4 +1,4 @@
-**##🧠 MRI Brain Tumor Classification**
+*#🧠 MRI Brain Tumor Classification*
 
 This project leverages deep learning techniques to automatically classify brain tumors from MRI scans. Built with PyTorch for model development and Streamlit for an interactive user interface, it enables users to upload MRI images and receive instant predictions about tumor type. The system supports both a custom Convolutional Neural Network (CNN) and a transfer learning approach using ResNet50, providing robust and accurate classification across four categories: Glioma, Meningioma, Pituitary Tumor, and No Tumor. The application also features visual feedback, confidence scores, and text-to-speech prediction summaries, making it accessible for both clinical and educational use.
 
