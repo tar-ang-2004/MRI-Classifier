@@ -41,16 +41,31 @@ transform = transforms.Compose([
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
-def predict_image(image):
-    input_tensor = transform(image).unsqueeze(0)
-    with torch.no_grad():
-        outputs = model(input_tensor)
-        flipped_tensor = transforms.functional.hflip(input_tensor)
-        outputs_flipped = model(flipped_tensor)
-        outputs_avg = (outputs + outputs_flipped) / 2
-        _, pred = torch.max(outputs_avg, 1)
-        conf = torch.softmax(outputs_avg, 1)[0][pred].item() * 100
-    return class_names[pred], conf
+def predict_image(image, temperature=0.5):
+    # Generate augmented versions of the image
+    tta_images = [
+        image,  # original
+        image.transpose(Image.FLIP_LEFT_RIGHT),  # horizontal flip
+        image.rotate(15),  # slight rotation
+        image.rotate(-15),  # opposite rotation
+    ]
+    
+    outputs = []
+    for img in tta_images:
+        input_tensor = transform(img).unsqueeze(0)
+        with torch.no_grad():
+            output = model(input_tensor)
+            outputs.append(output)
+
+    # Average the predictions
+    avg_output = torch.mean(torch.stack(outputs), dim=0)
+
+    # Apply temperature scaling for sharper confidence
+    scaled_output = avg_output / temperature
+    probabilities = torch.nn.functional.softmax(scaled_output, dim=1)
+    
+    conf, pred = torch.max(probabilities, 1)
+    return class_names[pred], conf.item() * 100
 
 def speak(text):
     tts = gTTS(text, slow=False)
@@ -161,7 +176,7 @@ if files:
             if st.session_state.speak_enabled:
                 speak(f"Image {idx+1} is not RGB.")
             continue
-        st.image(image, caption=f"🖼️ MRI Image {idx+1}", use_column_width=True)
+        st.image(image, caption=f"🖼️ MRI Image {idx+1}", use_container_width=True)
         pred, conf = predict_image(image)
         result_text = f"Prediction: {pred.upper()} | Confidence: {conf:.2f}%"
         st.markdown(f'<div class="result">{result_text}</div>', unsafe_allow_html=True)
