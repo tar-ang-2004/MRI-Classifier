@@ -3,33 +3,29 @@ from PIL import Image
 import torch
 from torchvision import transforms, models
 import torch.nn as nn
-from gtts import gTTS
+import gtts
 import tempfile
 import os
-import time
 import random
-import requests
+import time
+import gdown
+import io
+import numpy as np
 
 DEVICE = torch.device('cpu')
 class_names = ["glioma", "meningioma", "no tumor", "pituitary"]
 
-MODEL_PATH = "models/transfer_model.pt"
-GDRIVE_FILE_ID = "1kb6mE0dgcftsHxZjgQxhFZF3QjzvpJgs"
-
-def download_model():
-    if not os.path.exists(MODEL_PATH):
-        os.makedirs("models", exist_ok=True)
-        url = f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}"
-        response = requests.get(url, allow_redirects=True)
-        with open(MODEL_PATH, 'wb') as f:
-            f.write(response.content)
-
 @st.cache_resource
 def load_model():
-    download_model()
+    model_path = "models/transfer_model.pt"
+    if not os.path.exists(model_path):
+        os.makedirs("models", exist_ok=True)
+        url = "https://drive.google.com/uc?id=1kb6mE0dgcftsHxZjgQxhFZF3QjzvpJgs"
+        gdown.download(url, model_path, quiet=False)
+
     model = models.resnet50(weights=None)
     model.fc = nn.Linear(model.fc.in_features, len(class_names))
-    model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
+    model.load_state_dict(torch.load(model_path, map_location=DEVICE))
     model.eval()
     return model
 
@@ -41,41 +37,57 @@ transform = transforms.Compose([
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
+def is_probably_mri(image):
+    image_np = np.array(image.resize((224, 224))) / 255.0
+    r, g, b = image_np[:, :, 0], image_np[:, :, 1], image_np[:, :, 2]
+    std_rgb = np.std([r, g, b])
+    grayscale_like = std_rgb < 0.05
+    max_rgb = np.max(image_np, axis=2)
+    min_rgb = np.min(image_np, axis=2)
+    saturation = np.mean(max_rgb - min_rgb)
+    low_saturation = saturation < 0.2
+    w, h = image.size
+    size_ok = 100 <= w <= 512 and 100 <= h <= 512
+    return grayscale_like and low_saturation and size_ok
+
 def predict_image(image, temperature=0.5):
-    # Generate augmented versions of the image
     tta_images = [
-        image,  # original
-        image.transpose(Image.FLIP_LEFT_RIGHT),  # horizontal flip
-        image.rotate(15),  # slight rotation
-        image.rotate(-15),  # opposite rotation
+        image,
+        image.transpose(Image.FLIP_LEFT_RIGHT),
+        image.rotate(15),
+        image.rotate(-15),
     ]
-    
     outputs = []
     for img in tta_images:
         input_tensor = transform(img).unsqueeze(0)
         with torch.no_grad():
             output = model(input_tensor)
             outputs.append(output)
-
-    # Average the predictions
     avg_output = torch.mean(torch.stack(outputs), dim=0)
-
-    # Apply temperature scaling for sharper confidence
     scaled_output = avg_output / temperature
     probabilities = torch.nn.functional.softmax(scaled_output, dim=1)
-    
     conf, pred = torch.max(probabilities, 1)
     return class_names[pred], conf.item() * 100
 
 def speak(text):
-    tts = gTTS(text, slow=False)
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
+    tts = gtts.gTTS(text, slow=False)
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as fp:
         tts.save(fp.name)
-        audio_bytes = open(fp.name, 'rb').read()
-        st.audio(audio_bytes, format='audio/mp3')
-    os.remove(fp.name)
+        fp.seek(0)
+        audio_bytes = fp.read()
+    st.audio(audio_bytes, format='audio/mp3')
 
-# --- CSS UI ---
+# Session state
+if 'upload_mode' not in st.session_state:
+    st.session_state.upload_mode = 'Single'
+if 'speak_enabled' not in st.session_state:
+    st.session_state.speak_enabled = False
+if 'fade_reset' not in st.session_state:
+    st.session_state.fade_reset = False
+if 'uploader_key' not in st.session_state:
+    st.session_state.uploader_key = str(random.randint(1000, 9999))
+
+# Stylish UI
 st.markdown("""
     <style>
     .title {
@@ -93,45 +105,48 @@ st.markdown("""
         100% { transform: translateY(0px); }
     }
     .warning {
+        color: #fff;
         background: linear-gradient(45deg, #ff416c, #ff4b2b);
-        color: white; padding: 1em;
-        border-radius: 1em; margin-bottom: 1em;
+        padding: 1em;
+        border-radius: 1em;
+        font-weight: bold;
         animation: float 1.5s ease-in-out infinite;
+        margin-bottom: 1em;
     }
     .result {
+        background: #d4fc79;
         background: linear-gradient(to right, #96e6a1, #d4fc79);
-        color: black; font-weight: bold; font-size: 1.1em;
-        padding: 1em; border-radius: 12px;
+        color: #000;
+        padding: 1em;
+        border-radius: 12px;
+        margin-top: 10px;
+        font-weight: bold;
+        font-size: 1.1em;
         box-shadow: 0 4px 14px rgba(0,0,0,0.2);
     }
     .fadeout-box {
         animation: fadeout 1.2s ease-out forwards;
         font-size: 1.1em;
+        color: white;
         background: linear-gradient(to right, #f2709c, #ff9472);
-        padding: 1em; border-radius: 12px;
-        text-align: center; color: white;
-        margin-top: 20px; font-weight: bold;
+        padding: 1em;
+        border-radius: 12px;
+        text-align: center;
+        margin-top: 20px;
+        font-weight: bold;
     }
     @keyframes fadeout {
-        0% {opacity: 1;} 50% {opacity: 0.5;} 100% {opacity: 0;}
+        0% {opacity: 1;}
+        50% {opacity: 0.5;}
+        100% {opacity: 0; display: none;}
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- Title ---
+# Title
 st.markdown('<div class="title">🧠 Brain Tumor MRI Classifier</div>', unsafe_allow_html=True)
 
-# --- Session State ---
-if 'upload_mode' not in st.session_state:
-    st.session_state.upload_mode = 'Single'
-if 'speak_enabled' not in st.session_state:
-    st.session_state.speak_enabled = False
-if 'fade_reset' not in st.session_state:
-    st.session_state.fade_reset = False
-if 'uploader_key' not in st.session_state:
-    st.session_state.uploader_key = str(random.randint(1000, 9999))
-
-# --- Button Controls ---
+# Buttons
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     if st.button("📷 Single Image"):
@@ -148,38 +163,48 @@ with col4:
         st.session_state.upload_mode = "Single"
         st.session_state.speak_enabled = False
         st.session_state.uploader_key = str(random.randint(1000, 9999))
+        st.rerun()
 
-# --- Reset Animation ---
 if st.session_state.fade_reset:
     st.markdown('<div class="fadeout-box">🔄 Resetting... Please wait...</div>', unsafe_allow_html=True)
     time.sleep(1.2)
     st.session_state.fade_reset = False
     st.rerun()
 
-# --- Upload Info ---
+# Display mode
 st.markdown(f"**Upload Mode:** `{st.session_state.upload_mode}`")
-st.markdown(f"**Speak Enabled:** `{st.session_state.speak_enabled}`")
+st.markdown(f"**Speak:** `{st.session_state.speak_enabled}`")
 
-# --- Uploader ---
-files = st.file_uploader("Upload MRI image(s)", type=['jpg', 'jpeg', 'png'],
-                         accept_multiple_files=(st.session_state.upload_mode == "Multiple"),
-                         key=st.session_state.uploader_key)
+# Uploader
+files = st.file_uploader(
+    '📂 Drag & Drop MRI image(s) here or Browse',
+    type=['png', 'jpg', 'jpeg'],
+    accept_multiple_files=(st.session_state.upload_mode == "Multiple"),
+    key=st.session_state.uploader_key
+)
 
-# --- Predict Loop ---
+# Prediction loop
 if files:
     if st.session_state.upload_mode == "Single":
         files = [files]
     for idx, file in enumerate(files):
-        image = Image.open(file)
-        if image.mode != 'RGB':
-            st.markdown(f'<div class="warning">⚠️ Image {idx+1} is not RGB. Please upload RGB images only.</div>', unsafe_allow_html=True)
+        image = Image.open(file).convert('RGB')
+
+        if not is_probably_mri(image):
+            st.markdown(
+                f'<div class="warning">⚠️ Image {idx+1}: This does not appear to be a valid brain MRI image. Please upload a grayscale MRI scan.</div>',
+                unsafe_allow_html=True
+            )
             if st.session_state.speak_enabled:
-                speak(f"Image {idx+1} is not RGB.")
+                speak(f"Image {idx+1} does not appear to be a valid brain MRI scan.")
             continue
-        st.image(image, caption=f"🖼️ MRI Image {idx+1}", use_container_width=True)
+
+        st.image(image, caption=f'🖼️ MRI Image {idx+1}', use_container_width=True)
         pred, conf = predict_image(image)
-        result_text = f"Prediction: {pred.upper()} | Confidence: {conf:.2f}%"
+        result_text = f'Prediction: {pred.upper()}  |  Confidence: {conf:.2f}%'
         st.markdown(f'<div class="result">{result_text}</div>', unsafe_allow_html=True)
+
         if st.session_state.speak_enabled:
-            speak(f'Prediction for image {idx+1}: {pred.upper()}')
+            speak(f'Prediction for image {idx+1}: {pred.upper()}.')
+
         st.markdown("---")
