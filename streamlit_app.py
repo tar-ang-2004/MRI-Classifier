@@ -4,7 +4,6 @@ import torch
 from torchvision import transforms, models
 import torch.nn as nn
 from gtts import gTTS
-from playsound import playsound
 import tempfile
 import os
 import time
@@ -55,9 +54,10 @@ def predict_image(image):
 
 def speak(text):
     tts = gTTS(text, slow=False)
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as fp:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
         tts.save(fp.name)
-        playsound(fp.name)
+        audio_bytes = open(fp.name, 'rb').read()
+        st.audio(audio_bytes, format='audio/mp3')
     os.remove(fp.name)
 
 # --- CSS UI ---
