@@ -188,15 +188,15 @@ if files:
     if st.session_state.upload_mode == "Single":
         files = [files]
     for idx, file in enumerate(files):
-        image = Image.open(file).convert('RGB')
+        image = Image.open(file)
 
-        if not is_probably_mri(image):
+        if image.mode != 'RGB':
             st.markdown(
-                f'<div class="warning">⚠️ Image {idx+1}: This does not appear to be a valid brain MRI image. Please upload a grayscale MRI scan.</div>',
+                f'<div class="warning">⚠️ Image {idx+1}: Not RGB! Please upload a valid RGB image.</div>',
                 unsafe_allow_html=True
             )
             if st.session_state.speak_enabled:
-                speak(f"Image {idx+1} does not appear to be a valid brain MRI scan.")
+                speak(f"Image {idx+1} is not a valid RGB image.")
             continue
 
         st.image(image, caption=f'🖼️ MRI Image {idx+1}', use_container_width=True)
@@ -207,4 +207,4 @@ if files:
         if st.session_state.speak_enabled:
             speak(f'Prediction for image {idx+1}: {pred.upper()}.')
 
-        st.markdown("---")
+        st.markdown("-------------------------")
