@@ -9,19 +9,31 @@ import os
 import pygame
 import time
 import random
+import gdown
 
 DEVICE = torch.device('cpu')
 class_names = ["glioma", "meningioma", "no tumor", "pituitary"]
 
+MODEL_PATH = 'models/transfer_model.pt'
+MODEL_URL = 'https://drive.google.com/uc?id=1kb6mE0dgcftsHxZjgQxhFZF3QjzvpJgs'
+
+# --- Auto download model from Google Drive ---
+def download_model():
+    if not os.path.exists(MODEL_PATH):
+        os.makedirs("models", exist_ok=True)
+        gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
+
 @st.cache_resource
 def load_model():
+    download_model()
     model = models.resnet50(weights=None)
     model.fc = nn.Linear(model.fc.in_features, len(class_names))
-    model.load_state_dict(torch.load('models/transfer_model.pt', map_location=DEVICE))
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
     model.eval()
     return model
 
 model = load_model()
+
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -29,28 +41,21 @@ transform = transforms.Compose([
 ])
 
 def predict_image(image, temperature=0.5):
-    # Generate augmented versions of the image
     tta_images = [
-        image,  # original
-        image.transpose(Image.FLIP_LEFT_RIGHT),  # horizontal flip
-        image.rotate(15),  # slight rotation
-        image.rotate(-15),  # opposite rotation
+        image,
+        image.transpose(Image.FLIP_LEFT_RIGHT),
+        image.rotate(15),
+        image.rotate(-15),
     ]
-    
     outputs = []
     for img in tta_images:
         input_tensor = transform(img).unsqueeze(0)
         with torch.no_grad():
             output = model(input_tensor)
             outputs.append(output)
-
-    # Average the predictions
     avg_output = torch.mean(torch.stack(outputs), dim=0)
-
-    # Apply temperature scaling for sharper confidence
     scaled_output = avg_output / temperature
     probabilities = torch.nn.functional.softmax(scaled_output, dim=1)
-    
     conf, pred = torch.max(probabilities, 1)
     return class_names[pred], conf.item() * 100
 
@@ -59,7 +64,6 @@ def speak(text):
     with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as fp:
         temp_path = fp.name
         tts.save(temp_path)
-
     pygame.mixer.init()
     pygame.mixer.music.load(temp_path)
     pygame.mixer.music.play()
@@ -78,7 +82,7 @@ if 'fade_reset' not in st.session_state:
 if 'uploader_key' not in st.session_state:
     st.session_state.uploader_key = str(random.randint(1000, 9999))
 
-# --- Custom CSS (still stylish) ---
+# --- CSS Styling ---
 st.markdown("""
     <style>
     .title {
