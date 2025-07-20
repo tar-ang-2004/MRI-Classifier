@@ -10,3 +10,4 @@ Pillow
 gtts
 pygame
 gdown
+playsound
