@@ -100,14 +100,6 @@ gdown
 
 ---
 
-## 📜 License
-
-```plaintext
-MIT License
-```
-
----
-
 ## 📈 Visualizations
 
 ### 🔹 Class Distribution
