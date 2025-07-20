@@ -6,22 +6,30 @@ import torch.nn as nn
 import gtts
 import tempfile
 import os
-import time
 import random
-import subprocess
+import time
+import gdown
+import io
 
 DEVICE = torch.device('cpu')
 class_names = ["glioma", "meningioma", "no tumor", "pituitary"]
 
 @st.cache_resource
 def load_model():
+    model_path = "models/transfer_model.pt"
+    if not os.path.exists(model_path):
+        os.makedirs("models", exist_ok=True)
+        url = "https://drive.google.com/uc?id=1kb6mE0dgcftsHxZjgQxhFZF3QjzvpJgs"
+        gdown.download(url, model_path, quiet=False)
+
     model = models.resnet50(weights=None)
     model.fc = nn.Linear(model.fc.in_features, len(class_names))
-    model.load_state_dict(torch.load('models/transfer_model.pt', map_location=DEVICE))
+    model.load_state_dict(torch.load(model_path, map_location=DEVICE))
     model.eval()
     return model
 
 model = load_model()
+
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -53,14 +61,13 @@ def predict_image(image, temperature=0.5):
 def speak(text):
     tts = gtts.gTTS(text, slow=False)
     with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as fp:
-        temp_path = fp.name
-        tts.save(temp_path)
-    # Use system player (ffplay is available on Streamlit Cloud)
-    subprocess.call(['ffplay', '-nodisp', '-autoexit', temp_path],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-    os.remove(temp_path)
+        tts.save(fp.name)
+        fp.seek(0)
+        audio_bytes = fp.read()
 
-# --- Session State ---
+    st.audio(audio_bytes, format='audio/mp3')
+
+# Session state
 if 'upload_mode' not in st.session_state:
     st.session_state.upload_mode = 'Single'
 if 'speak_enabled' not in st.session_state:
@@ -70,7 +77,7 @@ if 'fade_reset' not in st.session_state:
 if 'uploader_key' not in st.session_state:
     st.session_state.uploader_key = str(random.randint(1000, 9999))
 
-# --- Custom CSS ---
+# Stylish UI
 st.markdown("""
     <style>
     .title {
@@ -126,10 +133,10 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- Title ---
+# Title
 st.markdown('<div class="title">🧠 Brain Tumor MRI Classifier</div>', unsafe_allow_html=True)
 
-# --- Buttons ---
+# Buttons
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     if st.button("📷 Single Image"):
@@ -148,18 +155,18 @@ with col4:
         st.session_state.uploader_key = str(random.randint(1000, 9999))
         st.rerun()
 
-# --- Fade Reset Animation ---
+# Reset fade
 if st.session_state.fade_reset:
     st.markdown('<div class="fadeout-box">🔄 Resetting... Please wait...</div>', unsafe_allow_html=True)
     time.sleep(1.2)
     st.session_state.fade_reset = False
     st.rerun()
 
-# --- Upload Info ---
+# Display mode
 st.markdown(f"**Upload Mode:** `{st.session_state.upload_mode}`")
 st.markdown(f"**Speak:** `{st.session_state.speak_enabled}`")
 
-# --- File Upload ---
+# Uploader
 files = st.file_uploader(
     '📂 Drag & Drop MRI image(s) here or Browse',
     type=['png', 'jpg', 'jpeg'],
@@ -167,18 +174,16 @@ files = st.file_uploader(
     key=st.session_state.uploader_key
 )
 
-# --- Prediction Loop ---
+# Prediction loop
 if files:
     if st.session_state.upload_mode == "Single":
         files = [files]
-
     for idx, file in enumerate(files):
-        try:
-            image = Image.open(file).convert("RGB")
-            r, g, b = image.split()
-        except Exception:
+        image = Image.open(file).convert('RGB')
+
+        if image.mode != 'RGB':
             st.markdown(
-                f'<div class="warning">⚠️ Image {idx+1}: Not a valid RGB image.</div>',
+                f'<div class="warning">⚠️ Image {idx+1}: Not RGB! Please upload a valid RGB image.</div>',
                 unsafe_allow_html=True
             )
             if st.session_state.speak_enabled:
@@ -192,4 +197,5 @@ if files:
 
         if st.session_state.speak_enabled:
             speak(f'Prediction for image {idx+1}: {pred.upper()}.')
+
         st.markdown("---")
