@@ -11,6 +11,8 @@ import time
 import gdown
 import io
 import numpy as np
+from gtts import gTTS
+
 
 DEVICE = torch.device('cpu')
 class_names = ["glioma", "meningioma", "no tumor", "pituitary"]
@@ -81,12 +83,11 @@ def predict_image(image, temperature=0.3):
 
 
 def speak(text):
-    tts = gtts.gTTS(text, slow=False)
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as fp:
-        tts.save(fp.name)
-        fp.seek(0)
-        audio_bytes = fp.read()
-    st.audio(audio_bytes, format='audio/mp3')
+    tts = gTTS(text, slow=False)
+    mp3_fp = io.BytesIO()
+    tts.write_to_fp(mp3_fp)
+    mp3_fp.seek(0)
+    st.audio(mp3_fp, format='audio/mp3')
 
 # Session state
 if 'upload_mode' not in st.session_state:
